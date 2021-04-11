@@ -16,7 +16,7 @@ import (
 
 var matchPI = []string{"B8:27:EB", "DC:A6:32", "E4:5F:01"}
 
-func Find(slice []string, val string) bool {
+func find(slice []string, val string) bool {
 	for _, item := range slice {
 		if item == val {
 			return true
@@ -25,7 +25,7 @@ func Find(slice []string, val string) bool {
 	return false
 }
 
-func Writer(coolArray []string, fileName string) {
+func writer(coolArray []string, fileName string) {
 	file, err := os.OpenFile(fmt.Sprintf("~/%s", fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 	if err != nil {
@@ -62,7 +62,7 @@ func scanMe(ipAddress string, workerNum int) (string, string) {
 		aliveDeviceFound = strings.Join([]string{result.Hosts[0].Addresses[0].String(), result.Hosts[0].Addresses[1].String()}, ",")
 		vendorMac := strings.Split(result.Hosts[0].Addresses[1].String(), ":")
 		vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
-		found := Find(matchPI, vendorMacString)
+		found := find(matchPI, vendorMacString)
 		if found {
 			fmt.Printf("PI FOUND! AT %v\n", result.Hosts[0].Addresses[0])
 			piFound = result.Hosts[0].Addresses[0].String()
@@ -94,7 +94,7 @@ func appendMe(item string) ([]net.IP, []string) {
 	item = strings.Replace(item, ".0/24", ".", -1)
 	for i < 256 {
 		arr = append(arr, fmt.Sprintf("%v%v", item, i))
-		i += 1
+		i++
 	}
 	for _, arrItem := range arr {
 		ip, _, err := net.ParseCIDR(arrItem)
@@ -167,10 +167,10 @@ func main() {
 		if deviceFound != "" {
 			aliveDeviceFoundList = append(aliveDeviceFoundList, deviceFound)
 		}
-		i += 1
+		i++
 	}
-	Writer(piFoundList, "pilist.txt")
-	Writer(aliveDeviceFoundList, "devicesfound.txt")
+	writer(piFoundList, "pilist.txt")
+	writer(aliveDeviceFoundList, "devicesfound.txt")
 	// scanMe("10.10.200.*", 1)
 	// fmt.Printf("Nmap done: %d hosts up scanned in %3f seconds\n", len(result.Hosts), result.Stats.Finished.Elapsed)
 }
