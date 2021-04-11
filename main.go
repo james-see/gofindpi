@@ -26,7 +26,11 @@ func find(slice []string, val string) bool {
 }
 
 func writer(coolArray []string, fileName string) {
-	file, err := os.OpenFile(fmt.Sprintf("~/%s", fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	dirname, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	file, err := os.OpenFile(fmt.Sprintf("%s/%s", dirname, fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
