@@ -7,9 +7,13 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jaypipes/ghw"
 
 	nmap "github.com/Ullaakut/nmap/v2"
 )
@@ -110,6 +114,29 @@ func appendMe(item string) ([]net.IP, []string) {
 	return ips, arr
 }
 
+func getCores() uint32 {
+	if runtime.GOOS == "darwin" {
+		out, err := exec.Command("sysctl", "machdep.cpu.thread_count").Output()
+		if err != nil {
+			fmt.Println(err)
+		}
+		var totalCores uint32
+		if _, err := fmt.Sscanf(string(out), "machdep.cpu.thread_count: %2d", &totalCores); err == nil {
+			return totalCores
+		}
+
+	} else {
+		cpuData, err := ghw.CPU()
+		if err != nil {
+			fmt.Println(err)
+		}
+		var totalCores uint32
+		totalCores = cpuData.TotalCores
+		return totalCores
+	}
+	return 0
+}
+
 func main() {
 	var piFoundList, aliveDeviceFoundList []string
 	addrs, err := net.InterfaceAddrs()
@@ -146,6 +173,7 @@ func main() {
 	}
 
 	// get user to select option number and press enter
+	fmt.Printf("You have %v cores available for processing.\n", getCores())
 	fmt.Print("select option for finding pi on what network: ")
 	input := bufio.NewScanner(os.Stdin)
 	input.Scan()
@@ -160,8 +188,6 @@ func main() {
 	// explode out selection to 1 through 256
 	finalArray, stringArray := appendMe(fixedip)
 	fmt.Println(finalArray[5], stringArray[5])
-	// Equivalent to `/usr/local/bin/nmap -p 80,443,843 google.com facebook.com youtube.com`,
-	// with a 5 minute timeout.
 	i := 0
 	for i < len(stringArray) {
 		piFound, deviceFound := scanMe(stringArray[i], i)
@@ -175,6 +201,5 @@ func main() {
 	}
 	writer(piFoundList, "pilist.txt")
 	writer(aliveDeviceFoundList, "devicesfound.txt")
-	// scanMe("10.10.200.*", 1)
-	// fmt.Printf("Nmap done: %d hosts up scanned in %3f seconds\n", len(result.Hosts), result.Stats.Finished.Elapsed)
+
 }
