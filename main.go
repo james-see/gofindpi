@@ -35,6 +35,15 @@ func find(slice []string, val string) bool {
 	return false
 }
 
+func findString(src string, val string) bool {
+	for _, item := range src {
+		if string(item) == val {
+			return true
+		}
+	}
+	return false
+}
+
 func writer(coolArray []string, fileName string) {
 	dirname, err := os.UserHomeDir()
 	if err != nil {
@@ -64,8 +73,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup, m *sync.Mutex) {
 	pinger.Count = 1
 	pinger.Timeout = time.Second
 	pinger.OnRecv = func(pkt *ping.Packet) {
-		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
-			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
+		//fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
 		ipFound = append(ipFound, pkt.IPAddr.String())
 		// pinger.Stop()
 	}
@@ -78,6 +86,42 @@ func pingMe(ipAddress string, wg *sync.WaitGroup, m *sync.Mutex) {
 
 	wg.Done()
 	return
+}
+
+func splitAndStore(dataFromArp []byte) {
+	//scanner := bufio.NewScanner.Reader(dataFromArp)
+	//scanner.read()
+	var sliceOfMac = []string{}
+	stringer := strings.Split(string(dataFromArp), "?")
+	//fmt.Println(find())
+	for _, item := range stringer {
+		if strings.Contains(item, "incomplete") {
+			continue
+		}
+		if strings.ContainsAny(item, "(") {
+			ipData := strings.Split(strings.Split(item, "(")[1], ")")[0]
+			macAddressData := strings.Split(strings.Split(strings.Split(strings.Split(item, "(")[1], ")")[1], "at")[1], "on")[0]
+			fmt.Println(ipData, macAddressData)
+			updatedString := fmt.Sprintf("ip:%v mac:%v", ipData, macAddressData)
+			sliceOfMac = append(sliceOfMac, updatedString)
+		} else {
+			continue
+		}
+	}
+	writer(sliceOfMac, "devicesfound.txt")
+}
+
+func runCmd() []byte {
+	//cmd := "-a | awk '{print $2,$4}' | grep -e b8:27:eb -e dc:a6:32 -e e4:5f:01)"
+	out, err := exec.Command("arp", "-a").Output()
+
+	// if there is an error with our execution
+	// handle it here
+	if err != nil {
+		fmt.Printf("%s", err)
+		fmt.Println("fucked")
+	}
+	return out
 }
 
 func scanMe(ipAddress string, wg *sync.WaitGroup, m *sync.Mutex) {
@@ -229,13 +273,15 @@ func main() {
 	fixedip := splitMe(chosenIP)
 	// explode out selection to 1 through 256
 	_, stringArray := appendMe(fixedip)
-	fmt.Println(stringArray[5])
+	//fmt.Println(stringArray[5])
 	for i := 0; i < len(stringArray); i++ {
 		w.Add(1)
 		go pingMe(stringArray[i], &w, &m)
 	}
 	w.Wait()
+	data := runCmd()
+	//fmt.Println(string(data))
+	splitAndStore(data)
 	writer(piFoundList, "pilist.txt")
-	writer(ipFound, "devicesfound.txt")
 
 }
