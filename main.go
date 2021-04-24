@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"log"
 	"net"
@@ -16,8 +15,6 @@ import (
 
 	"github.com/go-ping/ping"
 	"github.com/jaypipes/ghw"
-
-	nmap "github.com/Ullaakut/nmap/v2"
 )
 
 // this needs to get to the pifoundlist.txt
@@ -26,6 +23,7 @@ import (
 var matchPI = []string{"b8:27:eb", "dc:a6:32", "e4:5f:01"}
 var piFoundList, aliveDeviceFoundList, ipFound []string
 
+// finds out if an item in slice matches
 func find(slice []string, val string) bool {
 	for _, item := range slice {
 		if item == val {
@@ -35,15 +33,7 @@ func find(slice []string, val string) bool {
 	return false
 }
 
-func findString(src string, val string) bool {
-	for _, item := range src {
-		if string(item) == val {
-			return true
-		}
-	}
-	return false
-}
-
+// handles writing data to a filename at user home folder
 func writer(coolArray []string, fileName string) {
 	dirname, err := os.UserHomeDir()
 	if err != nil {
@@ -65,32 +55,27 @@ func writer(coolArray []string, fileName string) {
 	file.Close()
 }
 
-func pingMe(ipAddress string, wg *sync.WaitGroup, m *sync.Mutex) {
+// ping each ip address
+func pingMe(ipAddress string, wg *sync.WaitGroup) {
 	pinger, err := ping.NewPinger(ipAddress)
 	if err != nil {
 		panic(err)
 	}
 	pinger.Count = 1
-	pinger.Timeout = time.Second
+	pinger.Timeout = time.Millisecond * 800
 	pinger.OnRecv = func(pkt *ping.Packet) {
-		//fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
 		ipFound = append(ipFound, pkt.IPAddr.String())
-		// pinger.Stop()
 	}
-	//m.Lock()
 	err = pinger.Run()
 	if err != nil {
 		panic(err)
 	}
-	//m.Unlock()
-
 	wg.Done()
 	return
 }
 
+// split out the arp results into slices for device list and pi list
 func splitAndStore(dataFromArp []byte) {
-	//scanner := bufio.NewScanner.Reader(dataFromArp)
-	//scanner.read()
 	var sliceOfMac = []string{}
 	var piSlice = []string{}
 	stringer := strings.Split(string(dataFromArp), "?")
@@ -102,10 +87,8 @@ func splitAndStore(dataFromArp []byte) {
 		if strings.ContainsAny(item, "(") {
 			ipData := strings.Split(strings.Split(item, "(")[1], ")")[0]
 			macAddressData := strings.Split(strings.Split(strings.Split(strings.Split(item, "(")[1], ")")[1], "at")[1], "on")[0]
-			//fmt.Println(ipData, macAddressData)
 			macAddressData = strings.TrimSpace(macAddressData)
 			vendorMac := strings.Split(macAddressData, ":")
-			fmt.Println(vendorMac)
 			vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
 			found := find(matchPI, vendorMacString)
 			updatedString := fmt.Sprintf("ip:%v mac:%v", ipData, macAddressData)
@@ -120,66 +103,17 @@ func splitAndStore(dataFromArp []byte) {
 	}
 	writer(sliceOfMac, "devicesfound.txt")
 	writer(piSlice, "pilist.txt")
+	fmt.Printf("Found %v devices including %v raspberry pis on the network in\n", len(sliceOfMac), len(piSlice))
 }
 
+// runs the arp command
 func runCmd() []byte {
-	//cmd := "-a | awk '{print $2,$4}' | grep -e b8:27:eb -e dc:a6:32 -e e4:5f:01)"
 	out, err := exec.Command("arp", "-a").Output()
-
-	// if there is an error with our execution
-	// handle it here
 	if err != nil {
 		fmt.Printf("%s", err)
 		fmt.Println("fucked")
 	}
 	return out
-}
-
-func scanMe(ipAddress string, wg *sync.WaitGroup, m *sync.Mutex) {
-	var piFound, aliveDeviceFound string
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	scanner, err := nmap.NewScanner(
-		nmap.WithTargets(ipAddress),
-		nmap.WithPingScan(),
-		nmap.WithContext(ctx),
-		nmap.WithVerbosity(5),
-	)
-	if err != nil {
-		log.Printf("unable to create nmap scanner: %v", err)
-	}
-
-	result, warnings, err := scanner.Run()
-	fmt.Println(result.Hosts[0].Addresses)
-	m.Lock()
-	if len(result.Hosts[0].Addresses) > 1 {
-		fmt.Printf("ALIVE! %v\n", result.Hosts[0].Addresses[1])
-		aliveDeviceFound = strings.Join([]string{result.Hosts[0].Addresses[0].String(), result.Hosts[0].Addresses[1].String()}, ",")
-		vendorMac := strings.Split(result.Hosts[0].Addresses[1].String(), ":")
-		vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
-		found := find(matchPI, vendorMacString)
-		if found {
-			//fmt.Printf("PI FOUND! AT %v\n", result.Hosts[0].Addresses[0])
-			piFound = result.Hosts[0].Addresses[0].String()
-		}
-	}
-
-	if err != nil {
-		log.Printf("unable to run nmap scan: %v", err)
-	}
-
-	if warnings != nil {
-		log.Printf("Warnings: \n %v", warnings)
-	}
-	if piFound != "" {
-		piFoundList = append(piFoundList, piFound)
-	}
-	if aliveDeviceFound != "" {
-		aliveDeviceFoundList = append(aliveDeviceFoundList, aliveDeviceFound)
-	}
-	m.Unlock()
-	wg.Done()
-
 }
 
 // removes the last ip address location and adds 0/24
@@ -191,25 +125,20 @@ func splitMe(item string) string {
 	return item
 }
 
-func appendMe(item string) ([]net.IP, []string) {
+// appends all the ip addresses as strings
+func appendMe(item string) []string {
 	arr := []string{}
-	ips := []net.IP{}
 	i := 1
 	item = strings.Replace(item, ".0/24", ".", -1)
 	for i < 256 {
 		arr = append(arr, fmt.Sprintf("%v%v", item, i))
 		i++
 	}
-	// for _, arrItem := range arr {
-	// 	ip, _, err := net.ParseCIDR(arrItem)
-	// 	if err != nil {
-	// 		fmt.Println(err)
-	// 	}
-	// 	ips = append(ips, ip)
-	// }
-	return ips, arr
+
+	return arr
 }
 
+// gets the core count for the cpu info
 func getCores() uint32 {
 	if runtime.GOOS == "darwin" {
 		out, err := exec.Command("sysctl", "machdep.cpu.thread_count").Output()
@@ -235,13 +164,10 @@ func getCores() uint32 {
 
 func main() {
 	var w sync.WaitGroup
-	var m sync.Mutex
 	addrs, err := net.InterfaceAddrs()
-	fmt.Println(addrs)
 	if err != nil {
 		fmt.Println(err)
 	}
-
 	var currentIP string
 	var listOfIps []string
 	for _, address := range addrs {
@@ -274,8 +200,12 @@ func main() {
 	fmt.Print("select option for finding pi on what network: ")
 	input := bufio.NewScanner(os.Stdin)
 	input.Scan()
+	if len(input.Text()) > 1 {
+		panic("input is wrong, must be a single number")
+	}
+	startTime := time.Now()
 	i1, err := strconv.Atoi(input.Text())
-	if err == nil {
+	if err != nil {
 		fmt.Println(i1)
 	}
 	// ensure to signify selected ip address
@@ -283,15 +213,20 @@ func main() {
 	// convert selected ip address to 0/24
 	fixedip := splitMe(chosenIP)
 	// explode out selection to 1 through 256
-	_, stringArray := appendMe(fixedip)
-	//fmt.Println(stringArray[5])
+	stringArray := appendMe(fixedip)
+	// loop through ip range and ping each in parallel
 	for i := 0; i < len(stringArray); i++ {
 		w.Add(1)
-		go pingMe(stringArray[i], &w, &m)
+		go pingMe(stringArray[i], &w)
 	}
 	w.Wait()
+	// run arp command to get all pinged devices found
 	data := runCmd()
-	//fmt.Println(string(data))
+	// iterate through found devices and save pilist and devicelist
 	splitAndStore(data)
-
+	// get time it took to run after the input
+	endTime := time.Now()
+	diff := endTime.Sub(startTime)
+	fmt.Printf("%f seconds\n", diff.Seconds())
+	fmt.Println("devicesfound.txt and pilist.txt saved to user's home folder")
 }
