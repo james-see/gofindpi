@@ -23,7 +23,7 @@ import (
 // this needs to get to the pifoundlist.txt
 // arp -a | awk '{print $2,$4}' | grep -e b8:27:eb -e dc:a6:32 -e e4:5f:01)
 
-var matchPI = []string{"B8:27:EB", "DC:A6:32", "E4:5F:01"}
+var matchPI = []string{"b8:27:eb", "dc:a6:32", "e4:5f:01"}
 var piFoundList, aliveDeviceFoundList, ipFound []string
 
 func find(slice []string, val string) bool {
@@ -92,6 +92,7 @@ func splitAndStore(dataFromArp []byte) {
 	//scanner := bufio.NewScanner.Reader(dataFromArp)
 	//scanner.read()
 	var sliceOfMac = []string{}
+	var piSlice = []string{}
 	stringer := strings.Split(string(dataFromArp), "?")
 	//fmt.Println(find())
 	for _, item := range stringer {
@@ -101,14 +102,24 @@ func splitAndStore(dataFromArp []byte) {
 		if strings.ContainsAny(item, "(") {
 			ipData := strings.Split(strings.Split(item, "(")[1], ")")[0]
 			macAddressData := strings.Split(strings.Split(strings.Split(strings.Split(item, "(")[1], ")")[1], "at")[1], "on")[0]
-			fmt.Println(ipData, macAddressData)
+			//fmt.Println(ipData, macAddressData)
+			macAddressData = strings.TrimSpace(macAddressData)
+			vendorMac := strings.Split(macAddressData, ":")
+			fmt.Println(vendorMac)
+			vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
+			found := find(matchPI, vendorMacString)
 			updatedString := fmt.Sprintf("ip:%v mac:%v", ipData, macAddressData)
 			sliceOfMac = append(sliceOfMac, updatedString)
+			if found {
+				//fmt.Printf("PI FOUND! AT %v\n", result.Hosts[0].Addresses[0])
+				piSlice = append(piSlice, updatedString)
+			}
 		} else {
 			continue
 		}
 	}
 	writer(sliceOfMac, "devicesfound.txt")
+	writer(piSlice, "pilist.txt")
 }
 
 func runCmd() []byte {
@@ -282,6 +293,5 @@ func main() {
 	data := runCmd()
 	//fmt.Println(string(data))
 	splitAndStore(data)
-	writer(piFoundList, "pilist.txt")
 
 }
