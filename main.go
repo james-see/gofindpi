@@ -40,7 +40,7 @@ func writer(coolArray []string, fileName string) {
 		log.Fatal(err)
 	}
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s", dirname, fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
+	defer file.Close()
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
 	}
@@ -52,7 +52,6 @@ func writer(coolArray []string, fileName string) {
 	}
 
 	datawriter.Flush()
-	file.Close()
 }
 
 // ping each ip address
@@ -61,6 +60,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 	if err != nil {
 		panic(err)
 	}
+	defer pinger.Stop()
 	pinger.Count = 1
 	pinger.Timeout = time.Millisecond * 800
 	pinger.OnRecv = func(pkt *ping.Packet) {
@@ -70,6 +70,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 	if err != nil {
 		panic(err)
 	}
+
 	wg.Done()
 	return
 }
