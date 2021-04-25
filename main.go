@@ -64,6 +64,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 		panic(err)
 	}
 	defer pinger.Stop()
+	pinger.SetPrivileged(true)
 	pinger.Count = 1
 	pinger.Timeout = time.Millisecond * 800
 	pinger.OnRecv = func(pkt *ping.Packet) {
