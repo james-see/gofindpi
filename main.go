@@ -17,9 +17,12 @@ import (
 	"github.com/jaypipes/ghw"
 )
 
-// this needs to get to the pifoundlist.txt
+// notes
+// this needs to print any raspberry pi's found as one liner if not using this
+// package after pinging all ip addresses on the network
 // arp -a | awk '{print $2,$4}' | grep -e b8:27:eb -e dc:a6:32 -e e4:5f:01)
 
+// can use any arbitrary trigram for any physical address identifier for devices
 var matchPI = []string{"b8:27:eb", "dc:a6:32", "e4:5f:01"}
 var piFoundList, aliveDeviceFoundList, ipFound []string
 
@@ -79,23 +82,25 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 func splitAndStore(dataFromArp []byte) {
 	var sliceOfMac = []string{}
 	var piSlice = []string{}
+	// specific formatting shit from the arp command itself
 	stringer := strings.Split(string(dataFromArp), "?")
-	//fmt.Println(find())
 	for _, item := range stringer {
+		// skip wasted strings
 		if strings.Contains(item, "incomplete") {
 			continue
 		}
+		// iterate and parse out just the macaddress and ip address from the arp string slice
 		if strings.ContainsAny(item, "(") {
 			ipData := strings.Split(strings.Split(item, "(")[1], ")")[0]
 			macAddressData := strings.Split(strings.Split(strings.Split(strings.Split(item, "(")[1], ")")[1], "at")[1], "on")[0]
 			macAddressData = strings.TrimSpace(macAddressData)
 			vendorMac := strings.Split(macAddressData, ":")
 			vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
+			// check to see if mac address trigram matches any of the pi trigrams
 			found := find(matchPI, vendorMacString)
 			updatedString := fmt.Sprintf("ip:%v mac:%v", ipData, macAddressData)
 			sliceOfMac = append(sliceOfMac, updatedString)
 			if found {
-				//fmt.Printf("PI FOUND! AT %v\n", result.Hosts[0].Addresses[0])
 				piSlice = append(piSlice, updatedString)
 			}
 		} else {
@@ -107,7 +112,12 @@ func splitAndStore(dataFromArp []byte) {
 	fmt.Printf("Found %v devices including %v raspberry pis on the network in\n", len(sliceOfMac), len(piSlice))
 }
 
-// runs the arp command
+// runs the arp command example output below
+// $ arp -a
+//  (192.168.1.1) at cc:40:d0:54:4e:f4 on en0 ifscope [ethernet]
+//  (192.168.1.3) at d4:ab:cd:7:4:13 on en0 ifscope [ethernet]
+//  (192.168.1.7) at c8:69:cd:4a:c1:27 on en0 ifscope [ethernet]
+//  (192.168.1.13) at 68:d9:3c:8a:ad:5c on en0 ifscope [ethernet]
 func runCmd() []byte {
 	out, err := exec.Command("arp", "-a").Output()
 	if err != nil {
@@ -117,11 +127,10 @@ func runCmd() []byte {
 	return out
 }
 
-// removes the last ip address location and adds 0/24
+// removes the last ip address trigram
 func splitMe(item string) string {
 	last := strings.Split(item, ".")
 	s := last[len(last)-1]
-	// fmt.Println("Last", s)
 	item = strings.Replace(item, fmt.Sprintf(".%s", s), ".0/24", -1)
 	return item
 }
@@ -135,7 +144,6 @@ func appendMe(item string) []string {
 		arr = append(arr, fmt.Sprintf("%v%v", item, i))
 		i++
 	}
-
 	return arr
 }
 
@@ -164,6 +172,7 @@ func getCores() uint32 {
 }
 
 func main() {
+	// used for goroutine to avoid memory errors
 	var w sync.WaitGroup
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -188,7 +197,7 @@ func main() {
 		}
 	}
 
-	// print all the options
+	// print all of the network interface options
 	for i, item := range listOfIps {
 		last := strings.Split(item, ".")
 		s := last[len(last)-1]

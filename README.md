@@ -9,7 +9,9 @@ then run `gofindpi`, it will ask what network you want to scan from your network
 
 It will scan each device location and store in home folder `devicesfound.txt` and `pilist.txt`
 
-### benchmarks
+## benchmarks
+
+Note: To compare apples to apples, I wiped the local arp cache for each trial by running `sudo arp -d -a`.
 
 Ok, so to compare this to just running nmap vs. [findpi](https://github.com/jamesacampbell/findpi) vs gofindpi:
 
