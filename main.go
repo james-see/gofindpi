@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"runtime"
 	"strconv"
 	"strings"
@@ -34,6 +35,15 @@ func find(slice []string, val string) bool {
 		}
 	}
 	return false
+}
+
+// checks for root user
+func isRoot() bool {
+	currentUser, err := user.Current()
+	if err != nil {
+		log.Fatalf("[isRoot] Unable to get current user: %s", err)
+	}
+	return currentUser.Username == "root"
 }
 
 // handles writing data to a filename at user home folder
@@ -172,6 +182,11 @@ func getCores() uint32 {
 }
 
 func main() {
+	rootUserBool := isRoot()
+	if !rootUserBool {
+		fmt.Println("Must run as root / sudo")
+		os.Exit(1)
+	}
 	// used for goroutine to avoid memory errors
 	var w sync.WaitGroup
 	addrs, err := net.InterfaceAddrs()
