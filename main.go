@@ -24,7 +24,7 @@ import (
 
 // can use any arbitrary trigram for any physical address identifier for devices
 var matchPI = []string{"b8:27:eb", "dc:a6:32", "e4:5f:01"}
-var piFoundList, aliveDeviceFoundList, ipFound []string
+var ipFound []string
 
 // finds out if an item in slice matches
 func find(slice []string, val string) bool {
@@ -43,10 +43,10 @@ func writer(coolArray []string, fileName string) {
 		log.Fatal(err)
 	}
 	file, err := os.OpenFile(fmt.Sprintf("%s/%s", dirname, fileName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	defer file.Close()
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
 	}
+	defer file.Close()
 
 	datawriter := bufio.NewWriter(file)
 
@@ -55,10 +55,12 @@ func writer(coolArray []string, fileName string) {
 	}
 
 	datawriter.Flush()
+	file.Close()
 }
 
 // ping each ip address
 func pingMe(ipAddress string, wg *sync.WaitGroup) {
+	defer wg.Done()
 	pinger, err := ping.NewPinger(ipAddress)
 	if err != nil {
 		panic(err)
@@ -74,9 +76,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 	if err != nil {
 		panic(err)
 	}
-
-	wg.Done()
-	return
+	pinger.Stop()
 }
 
 // split out the arp results into slices for device list and pi list
@@ -165,8 +165,7 @@ func getCores() uint32 {
 		if err != nil {
 			fmt.Println(err)
 		}
-		var totalCores uint32
-		totalCores = cpuData.TotalCores
+		totalCores := cpuData.TotalCores
 		return totalCores
 	}
 	return 0
