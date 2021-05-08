@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-ping/ping"
@@ -74,7 +75,7 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 		panic(err)
 	}
 	defer pinger.Stop()
-	pinger.SetPrivileged(true)
+	// pinger.SetPrivileged(true)
 	pinger.Count = 1
 	pinger.Timeout = time.Millisecond * 800
 	pinger.OnRecv = func(pkt *ping.Packet) {
@@ -85,6 +86,34 @@ func pingMe(ipAddress string, wg *sync.WaitGroup) {
 		panic(err)
 	}
 	pinger.Stop()
+}
+
+func basicPing(ipAddress string, wg *sync.WaitGroup) {
+	_, err := exec.Command("ping", ipAddress).Output()
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+// set ulimit properly using rlimit
+func setLimit() {
+	var rLimit syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("Error Getting Rlimit ", err)
+	}
+	// fmt.Println(rLimit)
+	rLimit.Max = 999999
+	rLimit.Cur = 999999
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("Error Setting Rlimit ", err)
+	}
+	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err != nil {
+		fmt.Println("Error Getting Rlimit ", err)
+	}
+	// fmt.Println("Rlimit Final", rLimit)
 }
 
 // split out the arp results into slices for device list and pi list
@@ -128,7 +157,7 @@ func splitAndStore(dataFromArp []byte) {
 //  (192.168.1.7) at c8:69:cd:4a:c1:27 on en0 ifscope [ethernet]
 //  (192.168.1.13) at 68:d9:3c:8a:ad:5c on en0 ifscope [ethernet]
 func runCmd() []byte {
-	out, err := exec.Command("arp", "-a").Output()
+	out, err := exec.Command("sudo", "arp", "-a").Output()
 	if err != nil {
 		fmt.Printf("%s", err)
 		fmt.Println("fucked")
@@ -180,11 +209,12 @@ func getCores() uint32 {
 }
 
 func main() {
-	rootUserBool := isRoot()
-	if !rootUserBool {
-		fmt.Println("Must run as root / sudo")
-		os.Exit(1)
-	}
+	// rootUserBool := isRoot()
+	// if !rootUserBool {
+	// 	fmt.Println("Must run as root / sudo")
+	// 	os.Exit(1)
+	// }
+	setLimit()
 	// used for goroutine to avoid memory errors
 	var w sync.WaitGroup
 	addrs, err := net.InterfaceAddrs()
