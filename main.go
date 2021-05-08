@@ -56,7 +56,6 @@ func writer(coolArray []string, fileName string) {
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
 	}
-	defer file.Close()
 
 	datawriter := bufio.NewWriter(file)
 
@@ -70,7 +69,6 @@ func writer(coolArray []string, fileName string) {
 
 // ping each ip address
 func pingMe(ipAddress string, wg *sync.WaitGroup) {
-	defer wg.Done()
 	pinger, err := ping.NewPinger(ipAddress)
 	if err != nil {
 		panic(err)
@@ -206,6 +204,7 @@ func main() {
 				currentIP = ipnet.IP.String()
 				listOfIps = append(listOfIps, currentIP)
 				if err != nil {
+					fmt.Println("fuck you")
 					fmt.Println(err)
 				}
 			}
@@ -243,6 +242,7 @@ func main() {
 	for i := 0; i < len(stringArray); i++ {
 		w.Add(1)
 		go pingMe(stringArray[i], &w)
+		w.Done()
 	}
 	w.Wait()
 	// run arp command to get all pinged devices found
