@@ -1,4 +1,4 @@
-module gofindpi
+module github.com/jamesacampbell/gofindpi
 
 go 1.15
 
