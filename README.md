@@ -3,7 +3,7 @@ Like findpi in python but in golang.
 
 ## quickstart
 
-`go get github.com/jamesacampbell/gofindpi`
+`go get github.com/james-see/gofindpi`
 
 then simply run `gofindpi`, it will ask what network you want to scan from your network device list, usually the 0 option is the correct one
 
