@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -19,269 +20,394 @@ import (
 	"github.com/jaypipes/ghw"
 )
 
-// notes
-// this needs to print any raspberry pi's found as one liner if not using this
-// package after pinging all ip addresses on the network
-// arp -a | awk '{print $2,$4}' | grep -e b8:27:eb -e dc:a6:32 -e e4:5f:01)
+// Raspberry Pi MAC address prefixes (OUI - Organizationally Unique Identifier)
+// Comprehensive list including all known Pi models
+var raspberryPiMACs = []string{
+	"b8:27:eb", // Original Raspberry Pi Foundation
+	"dc:a6:32", // Raspberry Pi Trading Ltd
+	"e4:5f:01", // Raspberry Pi 4 and newer
+	"28:cd:c1", // Raspberry Pi 400 and some Pi 4
+	"d8:3a:dd", // Some Raspberry Pi models
+	"2c:cf:67", // Raspberry Pi 5 and newer models
+}
 
-// can use any arbitrary trigram for any physical address identifier for devices
-var matchPI = []string{"b8:27:eb", "dc:a6:32", "e4:5f:01"}
-var ipFound []string
+type device struct {
+	IP  string
+	MAC string
+}
 
-// finds out if an item in slice matches
-func find(slice []string, val string) bool {
-	for _, item := range slice {
-		if item == val {
+// Configuration for scanning
+type scanConfig struct {
+	timeout       time.Duration
+	maxGoroutines int
+	pingCount     int
+}
+
+// Checks if a MAC address prefix matches any Raspberry Pi MAC
+func isRaspberryPi(mac string) bool {
+	if len(mac) < 8 {
+		return false
+	}
+	macPrefix := strings.ToLower(mac[:8])
+	for _, piMAC := range raspberryPiMACs {
+		if macPrefix == strings.ToLower(piMAC) {
 			return true
 		}
 	}
 	return false
 }
 
-// checks for root user
+// Checks if running as root user
 func isRoot() bool {
 	currentUser, err := user.Current()
 	if err != nil {
-		log.Fatalf("[isRoot] Unable to get current user: %s", err)
+		log.Printf("[Warning] Unable to get current user: %v", err)
+		return false
 	}
-	return currentUser.Username == "root"
+	return currentUser.Username == "root" || currentUser.Uid == "0"
 }
 
-// handles writing data to a filename at user home folder
-func writer(coolArray []string, fileName string) {
+// Writes device list to a file in user's home directory
+func writeToFile(devices []device, fileName string) error {
 	dirname, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to get home directory: %w", err)
 	}
-	file, err := os.OpenFile(fmt.Sprintf("%s/%s", dirname, fileName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+
+	filePath := fmt.Sprintf("%s/%s", dirname, fileName)
+	file, err := os.Create(filePath)
 	if err != nil {
-		log.Fatalf("failed creating file: %s", err)
+		return fmt.Errorf("failed creating file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	for _, dev := range devices {
+		_, err := writer.WriteString(fmt.Sprintf("ip:%s mac:%s\n", dev.IP, dev.MAC))
+		if err != nil {
+			return fmt.Errorf("failed writing to file: %w", err)
+		}
 	}
 
-	datawriter := bufio.NewWriter(file)
-
-	for _, data := range coolArray {
-		_, _ = datawriter.WriteString(data + "\n")
-	}
-
-	datawriter.Flush()
-	file.Close()
+	return nil
 }
 
-// ping each ip address
-func pingMe(ipAddress string, wg *sync.WaitGroup) {
+// Pings an IP address with proper context and timeout
+func pingIP(ctx context.Context, ipAddress string, config scanConfig) bool {
 	pinger, err := ping.NewPinger(ipAddress)
 	if err != nil {
-		panic(err)
+		return false
 	}
 	defer pinger.Stop()
-	// pinger.SetPrivileged(true)
-	pinger.Count = 1
-	pinger.Timeout = time.Millisecond * 800
+
+	pinger.Count = config.pingCount
+	pinger.Timeout = config.timeout
+	pinger.SetPrivileged(false) // Use unprivileged ICMP
+
+	received := false
 	pinger.OnRecv = func(pkt *ping.Packet) {
-		ipFound = append(ipFound, pkt.IPAddr.String())
+		received = true
 	}
-	err = pinger.Run()
-	if err != nil {
-		panic(err)
+
+	// Run with context
+	done := make(chan bool, 1)
+	go func() {
+		err = pinger.Run()
+		done <- true
+	}()
+
+	select {
+	case <-ctx.Done():
+		pinger.Stop()
+		return false
+	case <-done:
+		return received && err == nil
 	}
-	pinger.Stop()
 }
 
-func basicPing(ipAddress string, wg *sync.WaitGroup) {
-	_, err := exec.Command("ping", ipAddress).Output()
-	if err != nil {
-		fmt.Println(err)
-	}
-}
+// Scans a range of IPs concurrently with proper goroutine management
+func scanIPRange(ctx context.Context, ips []string, config scanConfig) []string {
+	var (
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		foundIPs  []string
+		semaphore = make(chan struct{}, config.maxGoroutines)
+		completed = 0
+		total     = len(ips)
+		lastPrint int
+	)
 
-// set ulimit properly using rlimit
-func setLimit() {
-	var rLimit syscall.Rlimit
-	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	if err != nil {
-		fmt.Println("Error Getting Rlimit ", err)
-	}
-	// fmt.Println(rLimit)
-	rLimit.Max = 999999
-	rLimit.Cur = 999999
-	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	if err != nil {
-		fmt.Println("Error Setting Rlimit ", err)
-	}
-	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	if err != nil {
-		fmt.Println("Error Getting Rlimit ", err)
-	}
-	// fmt.Println("Rlimit Final", rLimit)
-}
+	fmt.Printf("Scanning %d IP addresses...\n", total)
 
-// split out the arp results into slices for device list and pi list
-func splitAndStore(dataFromArp []byte) {
-	var sliceOfMac = []string{}
-	var piSlice = []string{}
-	// specific formatting shit from the arp command itself
-	stringer := strings.Split(string(dataFromArp), "?")
-	for _, item := range stringer {
-		// skip wasted strings
-		if strings.Contains(item, "incomplete") {
-			continue
-		}
-		// iterate and parse out just the macaddress and ip address from the arp string slice
-		if strings.ContainsAny(item, "(") {
-			ipData := strings.Split(strings.Split(item, "(")[1], ")")[0]
-			macAddressData := strings.Split(strings.Split(strings.Split(strings.Split(item, "(")[1], ")")[1], "at")[1], "on")[0]
-			macAddressData = strings.TrimSpace(macAddressData)
-			vendorMac := strings.Split(macAddressData, ":")
-			vendorMacString := fmt.Sprintf("%s:%s:%s", vendorMac[0], vendorMac[1], vendorMac[2])
-			// check to see if mac address trigram matches any of the pi trigrams
-			found := find(matchPI, vendorMacString)
-			updatedString := fmt.Sprintf("ip:%v mac:%v", ipData, macAddressData)
-			sliceOfMac = append(sliceOfMac, updatedString)
-			if found {
-				piSlice = append(piSlice, updatedString)
+	for _, ip := range ips {
+		wg.Add(1)
+		semaphore <- struct{}{} // Acquire semaphore
+
+		go func(ipAddr string) {
+			defer wg.Done()
+			defer func() { <-semaphore }() // Release semaphore
+
+			if pingIP(ctx, ipAddr, config) {
+				mu.Lock()
+				foundIPs = append(foundIPs, ipAddr)
+				mu.Unlock()
 			}
-		} else {
+
+			mu.Lock()
+			completed++
+			progress := (completed * 100) / total
+			if progress > lastPrint && progress%10 == 0 {
+				fmt.Printf("Progress: %d%% (%d/%d)\n", progress, completed, total)
+				lastPrint = progress
+			}
+			mu.Unlock()
+		}(ip)
+	}
+
+	wg.Wait()
+	close(semaphore)
+	return foundIPs
+}
+
+// Parses ARP table to get MAC addresses
+func parseARPTable(foundIPs []string) ([]device, []device) {
+	out, err := exec.Command("arp", "-a").Output()
+	if err != nil {
+		log.Printf("Error running arp command: %v", err)
+		return nil, nil
+	}
+
+	var allDevices []device
+	var piDevices []device
+	foundIPMap := make(map[string]bool)
+	for _, ip := range foundIPs {
+		foundIPMap[ip] = true
+	}
+
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if !strings.Contains(line, "(") || strings.Contains(line, "incomplete") {
 			continue
 		}
+
+		// Parse: ? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]
+		parts := strings.Split(line, "(")
+		if len(parts) < 2 {
+			continue
+		}
+
+		ipPart := strings.Split(parts[1], ")")
+		if len(ipPart) < 2 {
+			continue
+		}
+		ip := strings.TrimSpace(ipPart[0])
+
+		macParts := strings.Split(ipPart[1], "at")
+		if len(macParts) < 2 {
+			continue
+		}
+
+		macPart := strings.Split(macParts[1], "on")
+		if len(macPart) < 1 {
+			continue
+		}
+		mac := strings.TrimSpace(macPart[0])
+
+		// Only include devices we actually pinged successfully
+		if !foundIPMap[ip] {
+			continue
+		}
+
+		dev := device{IP: ip, MAC: mac}
+		allDevices = append(allDevices, dev)
+
+		if isRaspberryPi(mac) {
+			piDevices = append(piDevices, dev)
+		}
 	}
-	writer(sliceOfMac, "devicesfound.txt")
-	writer(piSlice, "pilist.txt")
-	fmt.Printf("Found %v devices including %v raspberry pis on the network in\n", len(sliceOfMac), len(piSlice))
+
+	return allDevices, piDevices
 }
 
-// runs the arp command example output below
-// $ arp -a
-//  (192.168.1.1) at cc:40:d0:54:4e:f4 on en0 ifscope [ethernet]
-//  (192.168.1.3) at d4:ab:cd:7:4:13 on en0 ifscope [ethernet]
-//  (192.168.1.7) at c8:69:cd:4a:c1:27 on en0 ifscope [ethernet]
-//  (192.168.1.13) at 68:d9:3c:8a:ad:5c on en0 ifscope [ethernet]
-func runCmd() []byte {
-	out, err := exec.Command("sudo", "arp", "-a").Output()
-	if err != nil {
-		fmt.Printf("%s", err)
-		fmt.Println("fucked")
+// Sets system resource limits for better performance
+func setResourceLimits() {
+	var rLimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		log.Printf("Warning: Could not get resource limit: %v", err)
+		return
 	}
-	return out
-}
 
-// removes the last ip address trigram
-func splitMe(item string) string {
-	last := strings.Split(item, ".")
-	s := last[len(last)-1]
-	item = strings.Replace(item, fmt.Sprintf(".%s", s), ".0/24", -1)
-	return item
-}
-
-// appends all the ip addresses as strings
-func appendMe(item string) []string {
-	arr := []string{}
-	i := 1
-	item = strings.Replace(item, ".0/24", ".", -1)
-	for i < 256 {
-		arr = append(arr, fmt.Sprintf("%v%v", item, i))
-		i++
+	// Set to a high but reasonable limit
+	rLimit.Cur = 8192
+	if rLimit.Max < rLimit.Cur {
+		rLimit.Cur = rLimit.Max
 	}
-	return arr
+
+	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		log.Printf("Warning: Could not set resource limit: %v", err)
+	}
 }
 
-// gets the core count for the cpu info
-func getCores() uint32 {
+// Gets the number of CPU cores
+func getCPUCores() int {
 	if runtime.GOOS == "darwin" {
-		out, err := exec.Command("sysctl", "machdep.cpu.thread_count").Output()
-		if err != nil {
-			fmt.Println(err)
+		out, err := exec.Command("sysctl", "-n", "hw.ncpu").Output()
+		if err == nil {
+			if cores, err := strconv.Atoi(strings.TrimSpace(string(out))); err == nil {
+				return cores
+			}
 		}
-		var totalCores uint32
-		if _, err := fmt.Sscanf(string(out), "machdep.cpu.thread_count: %2d", &totalCores); err == nil {
-			return totalCores
-		}
-
-	} else {
-		cpuData, err := ghw.CPU()
-		if err != nil {
-			fmt.Println(err)
-		}
-		totalCores := cpuData.TotalCores
-		return totalCores
 	}
-	return 0
+
+	cpuData, err := ghw.CPU()
+	if err == nil && cpuData != nil {
+		return int(cpuData.TotalCores)
+	}
+
+	return runtime.NumCPU()
+}
+
+// Generates all IPs in a /24 subnet
+func generateIPRange(baseIP string) []string {
+	parts := strings.Split(baseIP, ".")
+	if len(parts) != 4 {
+		return nil
+	}
+
+	basePrefix := strings.Join(parts[:3], ".")
+	ips := make([]string, 0, 254)
+
+	for i := 1; i <= 254; i++ {
+		ips = append(ips, fmt.Sprintf("%s.%d", basePrefix, i))
+	}
+
+	return ips
+}
+
+// Gets all local IP addresses
+func getLocalIPs() []string {
+	var localIPs []string
+
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.Printf("Error getting network interfaces: %v", err)
+		return nil
+	}
+
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				localIPs = append(localIPs, ipnet.IP.String())
+			}
+		}
+	}
+
+	return localIPs
+}
+
+// Converts IP to CIDR notation
+func ipToCIDR(ip string) string {
+	parts := strings.Split(ip, ".")
+	if len(parts) != 4 {
+		return ip
+	}
+	return fmt.Sprintf("%s.%s.%s.0/24", parts[0], parts[1], parts[2])
 }
 
 func main() {
-	// rootUserBool := isRoot()
-	// if !rootUserBool {
-	// 	fmt.Println("Must run as root / sudo")
-	// 	os.Exit(1)
-	// }
-	setLimit()
-	// used for goroutine to avoid memory errors
-	var w sync.WaitGroup
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		fmt.Println(err)
+	fmt.Println("=== Raspberry Pi Network Scanner ===")
+	fmt.Println()
+
+	// Set resource limits for better performance
+	setResourceLimits()
+
+	// Get local IP addresses
+	localIPs := getLocalIPs()
+	if len(localIPs) == 0 {
+		log.Fatal("No network interfaces found")
 	}
-	var currentIP string
-	var listOfIps []string
-	for _, address := range addrs {
 
-		// check the address type and if it is not a loopback the display it
-		// = GET LOCAL IP ADDRESS
+	// Display available networks
+	fmt.Println("Available networks:")
+	for i, ip := range localIPs {
+		fmt.Printf("  [%d] %s\n", i, ipToCIDR(ip))
+	}
+	fmt.Println()
 
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				// fmt.Println("Current IP address : ", ipnet.IP.String())
-				currentIP = ipnet.IP.String()
-				listOfIps = append(listOfIps, currentIP)
-				if err != nil {
-					fmt.Println("fuck you")
-					fmt.Println(err)
-				}
-			}
+	// Get CPU info
+	cores := getCPUCores()
+	fmt.Printf("System: %d CPU cores available\n", cores)
+	fmt.Println()
+
+	// Get user selection
+	fmt.Print("Select network to scan [0]: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	input := strings.TrimSpace(scanner.Text())
+
+	selection := 0
+	if input != "" {
+		var err error
+		selection, err = strconv.Atoi(input)
+		if err != nil || selection < 0 || selection >= len(localIPs) {
+			log.Fatal("Invalid selection")
 		}
 	}
 
-	// print all of the network interface options
-	for i, item := range listOfIps {
-		last := strings.Split(item, ".")
-		s := last[len(last)-1]
-		item = strings.Replace(item, fmt.Sprintf(".%s", s), ".0/24", -1)
-		fmt.Println("Option:", i, item)
+	selectedIP := localIPs[selection]
+	fmt.Printf("Scanning network: %s\n\n", ipToCIDR(selectedIP))
+
+	// Configure scan parameters
+	config := scanConfig{
+		timeout:       time.Millisecond * 500,
+		maxGoroutines: cores * 32, // Balanced for network I/O
+		pingCount:     1,
 	}
 
-	// get user to select option number and press enter
-	fmt.Printf("You have %v cores available for processing.\n", getCores())
-	fmt.Print("select option for finding pi on what network: ")
-	input := bufio.NewScanner(os.Stdin)
-	input.Scan()
-	if len(input.Text()) > 1 {
-		panic("input is wrong, must be a single number")
+	// Generate IP range
+	ips := generateIPRange(selectedIP)
+	if len(ips) == 0 {
+		log.Fatal("Failed to generate IP range")
 	}
+
+	// Start scanning
 	startTime := time.Now()
-	i1, err := strconv.Atoi(input.Text())
-	if err != nil {
-		fmt.Println(i1)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	foundIPs := scanIPRange(ctx, ips, config)
+	fmt.Printf("\nFound %d active devices\n", len(foundIPs))
+
+	// Parse ARP table
+	fmt.Println("Parsing ARP table...")
+	allDevices, piDevices := parseARPTable(foundIPs)
+
+	// Save results
+	if len(allDevices) > 0 {
+		if err := writeToFile(allDevices, "devicesfound.txt"); err != nil {
+			log.Printf("Warning: Failed to save all devices: %v", err)
+		} else {
+			fmt.Printf("Saved %d devices to ~/devicesfound.txt\n", len(allDevices))
+		}
 	}
-	// ensure to signify selected ip address
-	chosenIP := listOfIps[i1]
-	// convert selected ip address to 0/24
-	fixedip := splitMe(chosenIP)
-	// explode out selection to 1 through 256
-	stringArray := appendMe(fixedip)
-	// loop through ip range and ping each in parallel
-	for i := 0; i < len(stringArray); i++ {
-		w.Add(1)
-		go pingMe(stringArray[i], &w)
-		w.Done()
+
+	if len(piDevices) > 0 {
+		if err := writeToFile(piDevices, "pilist.txt"); err != nil {
+			log.Printf("Warning: Failed to save Pi list: %v", err)
+		} else {
+			fmt.Printf("Saved %d Raspberry Pi devices to ~/pilist.txt\n", len(piDevices))
+		}
+
+		fmt.Println("\nRaspberry Pi devices found:")
+		for _, pi := range piDevices {
+			fmt.Printf("  • %s [%s]\n", pi.IP, pi.MAC)
+		}
+	} else {
+		fmt.Println("\nNo Raspberry Pi devices found on this network")
 	}
-	w.Wait()
-	// run arp command to get all pinged devices found
-	data := runCmd()
-	// iterate through found devices and save pilist and devicelist
-	splitAndStore(data)
-	// get time it took to run after the input
-	endTime := time.Now()
-	diff := endTime.Sub(startTime)
-	fmt.Printf("%f seconds\n", diff.Seconds())
-	fmt.Println("devicesfound.txt and pilist.txt saved to user's home folder")
+
+	duration := time.Since(startTime)
+	fmt.Printf("\nScan completed in %.2f seconds\n", duration.Seconds())
 }

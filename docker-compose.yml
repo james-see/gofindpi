@@ -1,20 +1,18 @@
-version: "3.7"
+version: "3.9"
 
 services:
   gofindpi:
-    image: gofindpi:1.0
-    privileged: true
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-    - mynet
-    # rest of service config and other services removed for clarity
-
-networks:
-  mynet:
-    name: mynet
-    ipam:
-      driver: default
-      config:
-      - subnet: "192.168.32.0/20"
-
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gofindpi:latest
+    container_name: gofindpi
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      - TERM=xterm-256color
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: "no"
