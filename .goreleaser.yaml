@@ -1,0 +1,118 @@
+version: 2
+
+project_name: gofindpi
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gofindpi
+    main: .
+    binary: gofindpi
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "386" }}386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: james-see
+    name: gofindpi
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Network Device Scanner v{{ .Version }}
+    
+    Fast, concurrent network device scanner with manufacturer identification.
+    Includes embedded OUI database with 38,000+ manufacturer entries.
+  footer: |
+    **Full Changelog**: https://github.com/james-see/gofindpi/compare/{{ .PreviousTag }}...{{ .Tag }}
+    
+    ## Installation
+    
+    ### Homebrew (macOS/Linux)
+    ```bash
+    brew tap james-see/tap
+    brew install gofindpi
+    ```
+    
+    ### Go Install
+    ```bash
+    go install github.com/james-see/gofindpi@latest
+    ```
+
+brews:
+  - repository:
+      owner: james-see
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/james-see/gofindpi"
+    description: "Fast network device scanner with manufacturer identification"
+    license: "MIT"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    install: |
+      bin.install "gofindpi"
+    test: |
+      system "#{bin}/gofindpi", "--version"

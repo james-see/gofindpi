@@ -83,3 +83,15 @@ mod-upgrade:
 	@go get -u ./...
 	@go mod tidy
 	@echo "Dependencies upgraded"
+
+## update-oui: Update the OUI database from external sources
+update-oui:
+	@echo "Updating OUI database..."
+	@go run scripts/generate_oui.go
+	@echo "OUI database updated"
+
+## oui-stats: Show OUI database statistics
+oui-stats:
+	@echo "OUI Database Statistics:"
+	@wc -l data/oui.go | awk '{print "  Lines:", $$1}'
+	@grep -c "^	\"" data/oui.go | awk '{print "  Entries:", $$1}'

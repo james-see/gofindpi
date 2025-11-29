@@ -5,10 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2025-10-05
+## [2.0.0] - 2025-11-28
 
 ### Added
-- Comprehensive Raspberry Pi 5 support with new MAC address prefix (2c:cf:67)
+- **Full Device Identification**: Now identifies ALL network devices, not just Raspberry Pis
+- **Embedded OUI Database**: 38,000+ manufacturer entries from Wireshark/IEEE compiled into binary
+- **Device Categories**: Automatic categorization (Network Equipment, Computer/Phone, IoT, TV, Printer, Gaming, etc.)
+- **Manufacturer Statistics**: Summary showing device counts by manufacturer
+- **Category Statistics**: Summary showing device counts by category type
+- **JSON Output**: Complete scan results in `~/devicesfound.json` with structured data
+- **Scan Metadata**: Timestamps, duration, and network info in JSON output
+- **Hostname Resolution**: Optional reverse DNS lookup for discovered devices
+- **OUI Generator Script**: `scripts/generate_oui.go` to update database from Wireshark/IEEE
+- **Make Targets**: `update-oui` and `oui-stats` for database management
+- Raspberry Pi 5 support with new MAC address prefix (2c:cf:67)
 - Raspberry Pi 400 support with MAC prefix (28:cd:c1)
 - Additional Pi model detection (d8:3a:dd)
 - Real-time progress reporting during network scans
@@ -17,12 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CPU core detection for optimized parallel execution
 - Enhanced error handling and recovery
 - .gitignore file for cleaner repository
-- Makefile for convenient build and development tasks
-- Comprehensive README with usage examples and troubleshooting
 
 ### Changed
-- **BREAKING**: Complete rewrite of core scanning engine
-- Updated from Go 1.15 to Go 1.23+ (now supports 1.24)
+- **BREAKING**: Project renamed from "findpi" concept to "Network Device Scanner"
+- **BREAKING**: Complete rewrite of core scanning and identification engine
+- `Device` struct now includes: IP, MAC, Manufacturer, Category, IsRaspberryPi, Hostname
+- Text output format now includes manufacturer and category information
+- Updated from Go 1.15 to Go 1.23+ (supports 1.24)
 - Modernized all dependencies to latest versions
   - go-ping/ping: v0.0.0 → v1.2.0
   - jaypipes/ghw: v0.7.0 → v0.19.1
@@ -30,7 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced timeout handling (reduced from 800ms to 500ms per ping)
 - Better resource limit management with reasonable defaults
 - Refactored code structure for maintainability
-- Cleaned up code style and removed inappropriate comments
 - Updated Docker configuration to use Go 1.24 and multi-stage builds
 - Improved Docker security with non-root user execution
 - Enhanced docker-compose.yml with host networking for better performance
@@ -49,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed unnecessary privileged mode requirements
 
 ### Performance
+- Comprehensive device identification in same scan time
 - 2-3x faster scanning through proper concurrency
 - Optimized goroutine count based on CPU cores
 - Reduced timeout for faster completion
@@ -70,3 +81,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Outdated Go version and dependencies
 - No progress reporting
 - Poor error handling
+- No manufacturer identification for non-Pi devices

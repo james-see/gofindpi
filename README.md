@@ -1,58 +1,74 @@
 # gofindpi
 
-Fast, concurrent Raspberry Pi network scanner written in Go. Scans your local network to discover all Raspberry Pi devices using MAC address detection.
+Fast, concurrent network device scanner written in Go. Scans your local network to identify **all devices** with manufacturer detection using an embedded OUI database of 38,000+ entries.
 
 ## Features
 
+- **Full Device Identification**: Identifies all network devices with manufacturer name and category
+- **Embedded OUI Database**: 38,000+ manufacturer entries compiled directly into the binary
+- **Raspberry Pi Detection**: Special detection for all Raspberry Pi models (Pi 1-5, Pi 400, Zero)
 - **Fast Concurrent Scanning**: Parallel ping scanning with optimized goroutine management
-- **Comprehensive Pi Detection**: Detects all Raspberry Pi models including Pi 5, Pi 400, Pi 4, Pi Zero 2 W, and older models
-- **Resilient**: Proper timeout handling, context management, and error recovery
+- **Multiple Output Formats**: Text files and structured JSON output
+- **Statistics & Analytics**: Manufacturer breakdown and device category statistics
+- **Hostname Resolution**: Optionally resolves hostnames via reverse DNS
 - **Cross-Platform**: Works on Linux, macOS, and Windows
-- **Low Resource Usage**: Efficient memory and CPU utilization
-- **Progress Reporting**: Real-time scan progress updates
+- **Self-Contained**: No external dependencies at runtime - everything embedded in binary
 
-## Supported Raspberry Pi Models
+## Device Categories
 
-Detects all Raspberry Pi models by their MAC address OUI prefixes:
-- Raspberry Pi 5 and newer
-- Raspberry Pi 400
-- Raspberry Pi 4 (all variants)
-- Raspberry Pi 3 (all variants)
-- Raspberry Pi Zero 2 W
-- Raspberry Pi 2
-- Raspberry Pi 1 and Zero
+The scanner identifies devices into categories:
+- **Raspberry Pi**: All Pi models (special detection)
+- **Network Equipment**: Cisco, Ubiquiti, Netgear, TP-Link, etc.
+- **Computer/Phone**: Apple, Dell, Lenovo, Samsung, etc.
+- **IoT/Smart Home**: Amazon devices, Ring, Nest, Philips Hue, etc.
+- **TV/Display**: LG, Samsung, Roku, Vizio, etc.
+- **Security Camera**: Hikvision, Dahua, Arlo, etc.
+- **Printer**: HP, Canon, Epson, Brother, etc.
+- **Gaming**: Nintendo, PlayStation, Xbox
+- **Storage/NAS**: Synology, QNAP
+- And many more...
 
 ## Installation
 
-### From Source
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap james-see/tap
+brew install gofindpi
+```
+
+### Go Install
 
 ```bash
 go install github.com/james-see/gofindpi@latest
 ```
+
+### Download Binary
+
+Download pre-built binaries from the [Releases page](https://github.com/james-see/gofindpi/releases).
 
 ### Build Locally
 
 ```bash
 git clone https://github.com/james-see/gofindpi.git
 cd gofindpi
-go build -o gofindpi
+make build
 ```
 
 ### Multi-Platform Build
 
 ```bash
-./scripts/build.sh all
+make build-all
 ```
 
-This creates binaries for:
+Creates binaries for:
 - macOS (Intel & Apple Silicon)
-- Linux (amd64 & arm64)
+- Linux (amd64, arm64, arm)
+- Windows (amd64)
 
 ## Usage
 
 ### Basic Usage
-
-Simply run the binary:
 
 ```bash
 ./gofindpi
@@ -62,45 +78,142 @@ The scanner will:
 1. Display available network interfaces
 2. Ask you to select which network to scan
 3. Scan all IPs in the selected /24 subnet
-4. Display found Raspberry Pi devices
-5. Save results to your home directory
-
-### Output Files
-
-Two files are created in your home directory:
-- `~/devicesfound.txt` - All devices found on the network
-- `~/pilist.txt` - Only Raspberry Pi devices
+4. Identify each device with manufacturer and category
+5. Display statistics and save results
 
 ### Example Output
 
-```
-=== Raspberry Pi Network Scanner ===
+The scanner features a modern TUI with color-coded output, progress bars, and visual statistics:
 
-Available networks:
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    NETWORK DEVICE SCANNER                    ║
+║        v2.0.0 • Manufacturer Detection • OUI Database        ║
+╚══════════════════════════════════════════════════════════════╝
+
+── AVAILABLE NETWORKS ────────────────────────────────────────
   [0] 192.168.1.0/24
-  [1] 172.16.0.0/24
 
-System: 8 CPU cores available
+── SYSTEM INFO ───────────────────────────────────────────────
+  ● CPU Cores: 8
+  ● OUI Database: 38203 entries
 
-Select network to scan [0]: 0
-Scanning network: 192.168.1.0/24
+  Select network to scan [0]: 0
 
-Scanning 254 IP addresses...
-Progress: 50% (127/254)
-Progress: 100% (254/254)
+── SCANNING: 192.168.1.0/24 ──────────────────────────────────
+  Scanning 254 addresses...
 
-Found 12 active devices
-Parsing ARP table...
-Saved 12 devices to ~/devicesfound.txt
-Saved 3 Raspberry Pi devices to ~/pilist.txt
+  [████████████████████████████████████████] 100% (254/254)
 
-Raspberry Pi devices found:
-  • 192.168.1.100 [b8:27:eb:a1:b2:c3]
-  • 192.168.1.105 [dc:a6:32:d4:e5:f6]
-  • 192.168.1.110 [e4:5f:01:aa:bb:cc]
+  ✓ Found 15 active devices
+  → Identifying manufacturers...
 
-Scan completed in 2.34 seconds
+── OUTPUT FILES ──────────────────────────────────────────────
+  ✓ ~/devicesfound.txt (15 devices)
+  ✓ ~/devicesfound.json (full scan data)
+  ✓ ~/pilist.txt (3 Raspberry Pi)
+
+── 🍓 RASPBERRY PI DEVICES ───────────────────────────────────
+  ● 192.168.1.100 (raspberrypi.local) [b8:27:eb:a1:b2:c3]
+  ● 192.168.1.105 (pi4.local) [dc:a6:32:d4:e5:f6]
+  ● 192.168.1.110 (pi5.local) [2c:cf:67:aa:bb:cc]
+
+── SCAN RESULTS ──────────────────────────────────────────────
+
+  ┌─────────────────────┬─────────────────────┐
+  │  TOTAL DEVICES      │  RASPBERRY PI       │
+  │         15          │          3          │
+  └─────────────────────┴─────────────────────┘
+
+── MANUFACTURERS ─────────────────────────────────────────────
+  Apple, Inc.                         ████████████████████  4
+  Raspberry Pi Trading Ltd            ███████████████░░░░░  3
+  Amazon Technologies Inc.            ██████████░░░░░░░░░░  2
+  ...
+
+── DEVICE CATEGORIES ─────────────────────────────────────────
+  💻 Computer/Phone       5
+  🍓 Raspberry Pi         3
+  🏠 IoT/Smart Home       2
+  📺 TV/Streaming         2
+  ...
+
+────────────────────────────────────────────────────────────
+  Scan completed in 2.34 seconds
 ```
+
+### Output Files
+
+Three files are created in your home directory:
+
+**1. `~/devicesfound.txt`** - All devices (text format)
+```
+ip:192.168.1.100 mac:b8:27:eb:a1:b2:c3 manufacturer:Raspberry Pi Foundation category:Raspberry Pi hostname:raspberrypi.local [Raspberry Pi]
+ip:192.168.1.105 mac:dc:a6:32:d4:e5:f6 manufacturer:Apple, Inc. category:Computer/Phone hostname:macbook.local
+```
+
+**2. `~/devicesfound.json`** - Complete results (JSON format)
+```json
+{
+  "timestamp": "2025-10-05T14:30:00Z",
+  "network": "192.168.1.0/24",
+  "duration_seconds": 2.34,
+  "total_devices": 15,
+  "raspberry_pi_count": 3,
+  "devices": [
+    {
+      "ip": "192.168.1.100",
+      "mac": "b8:27:eb:a1:b2:c3",
+      "manufacturer": "Raspberry Pi Foundation",
+      "category": "Raspberry Pi",
+      "is_raspberry_pi": true,
+      "hostname": "raspberrypi.local"
+    }
+  ],
+  "manufacturer_statistics": {
+    "Raspberry Pi Foundation": 3,
+    "Apple, Inc.": 4
+  },
+  "category_statistics": {
+    "Raspberry Pi": 3,
+    "Computer/Phone": 5
+  }
+}
+```
+
+**3. `~/pilist.txt`** - Raspberry Pi devices only (text format)
+
+## OUI Database
+
+The scanner includes an embedded OUI (Organizationally Unique Identifier) database containing 38,000+ manufacturer entries sourced from:
+- Wireshark manufacturer database
+- IEEE OUI registry
+
+### Updating the OUI Database
+
+To refresh the OUI database with the latest manufacturer entries:
+
+```bash
+make update-oui
+```
+
+This downloads the latest data from Wireshark and regenerates `data/oui.go`.
+
+### View OUI Statistics
+
+```bash
+make oui-stats
+```
+
+## Supported Raspberry Pi Models
+
+Detects all Raspberry Pi models by their MAC address OUI prefixes:
+- `b8:27:eb` - Original Raspberry Pi Foundation
+- `dc:a6:32` - Raspberry Pi Trading Ltd
+- `e4:5f:01` - Raspberry Pi 4 and newer
+- `28:cd:c1` - Raspberry Pi 400 and some Pi 4
+- `d8:3a:dd` - Various Raspberry Pi models
+- `2c:cf:67` - Raspberry Pi 5 and newest models
 
 ## Docker Usage
 
@@ -127,7 +240,7 @@ docker-compose run --rm gofindpi
 ## Performance
 
 Typical scan times for a /24 subnet (254 addresses):
-- **gofindpi**: ~1-3 seconds (depending on network and CPU cores)
+- **gofindpi**: ~2-4 seconds (with device identification)
 - nmap: ~5-6 seconds
 - Traditional sequential scan: ~20-30 seconds
 
@@ -138,38 +251,10 @@ Performance scales with CPU cores and network latency.
 1. **Network Discovery**: Identifies local network interfaces and their subnets
 2. **Concurrent Ping**: Sends ICMP echo requests to all IPs in parallel using goroutines
 3. **ARP Resolution**: Parses the system ARP table for MAC addresses
-4. **MAC Matching**: Compares MAC address prefixes against known Raspberry Pi OUIs
-5. **Results**: Saves and displays all Pi devices found
-
-## Configuration
-
-Scan parameters can be adjusted in the code:
-
-```go
-config := scanConfig{
-    timeout:       time.Millisecond * 500,  // Ping timeout
-    maxGoroutines: cores * 32,              // Concurrent goroutines
-    pingCount:     1,                        // Pings per IP
-}
-```
-
-## Troubleshooting
-
-### "No devices found"
-- Ensure devices are powered on and connected
-- Try increasing the timeout value
-- Check firewall settings aren't blocking ICMP
-
-### "Permission denied" on Linux
-Some systems require privileges for raw sockets. The scanner uses unprivileged ICMP by default, but if issues persist:
-```bash
-sudo setcap cap_net_raw+ep ./gofindpi
-```
-
-### Slow scanning
-- Check network congestion
-- Reduce `maxGoroutines` if experiencing system slowdown
-- Increase `timeout` for slower networks
+4. **OUI Lookup**: Cross-references MAC prefixes against 38k+ manufacturer database
+5. **Categorization**: Assigns device categories based on manufacturer
+6. **Hostname Resolution**: Optionally resolves hostnames via reverse DNS
+7. **Results**: Outputs text files, JSON, and statistics
 
 ## Development
 
@@ -182,17 +267,35 @@ go test ./...
 ### Lint Code
 
 ```bash
-./scripts/lint.sh
+make lint
 ```
-
-Requires:
-- `staticcheck`: `go install honnef.co/go/tools/cmd/staticcheck@latest`
-- `golangci-lint`: https://golangci-lint.run/usage/install/
 
 ### Build
 
 ```bash
-./scripts/build.sh
+make build
+```
+
+### Update Dependencies
+
+```bash
+make mod-upgrade
+```
+
+## Make Targets
+
+```
+make help          # Show all available targets
+make build         # Build the binary
+make build-all     # Build for all platforms
+make clean         # Remove build artifacts
+make run           # Build and run
+make lint          # Run linters
+make deps          # Update dependencies
+make update-oui    # Refresh OUI database
+make oui-stats     # Show OUI database statistics
+make docker-build  # Build Docker image
+make docker-run    # Run in Docker
 ```
 
 ## Contributing
@@ -213,20 +316,23 @@ See [LICENSE](LICENSE) file for details.
 Built with:
 - [go-ping/ping](https://github.com/go-ping/ping) - ICMP ping library
 - [jaypipes/ghw](https://github.com/jaypipes/ghw) - Hardware information library
+- [Wireshark](https://www.wireshark.org/) - OUI database source
 
 ## Changelog
 
 ### v2.0.0 (2025)
-- Updated to Go 1.23+
-- Complete rewrite with proper concurrent scanning
-- Added support for Raspberry Pi 5 and newer models
-- Enhanced error handling and resilience
-- Improved performance with optimized goroutine management
-- Added progress reporting
-- Better cross-platform compatibility
-- Modern Docker support
+- **Major Enhancement**: Full device identification with manufacturer detection
+- Added embedded OUI database with 38,000+ entries
+- Added device category classification
+- Added JSON output with scan metadata and statistics
+- Enhanced text output with manufacturer and category info
+- Added manufacturer and category statistics display
+- Added hostname resolution via reverse DNS
+- Added OUI database generator script
+- Updated to Go 1.23+ with latest dependencies
+- Complete codebase modernization
 
 ### v1.0.3 (2021)
 - Initial release
-- Basic network scanning
-- Support for Pi 1-4
+- Basic Raspberry Pi detection
+- Support for Pi 1-4 models

@@ -31,6 +31,7 @@ Thumbs.db
 
 # Output files
 devicesfound.txt
+devicesfound.json
 pilist.txt
 
 # Build artifacts
