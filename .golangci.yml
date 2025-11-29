@@ -1,0 +1,24 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+
+linters-settings:
+  staticcheck:
+    checks:
+      - "all"
+      - "-SA1019"  # Ignore deprecation warnings (go-ping is deprecated but works)
+
+issues:
+  exclude-rules:
+    # Ignore deprecation warning for go-ping package
+    - path: main.go
+      linters:
+        - staticcheck
+      text: "SA1019.*go-ping"
+

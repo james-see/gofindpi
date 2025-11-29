@@ -9,13 +9,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/user"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/go-ping/ping"
@@ -198,16 +196,6 @@ func resolveHostname(ip string) string {
 	// Remove trailing dot if present
 	hostname := strings.TrimSuffix(names[0], ".")
 	return hostname
-}
-
-// Checks if running as root user
-func isRoot() bool {
-	currentUser, err := user.Current()
-	if err != nil {
-		log.Printf("[Warning] Unable to get current user: %v", err)
-		return false
-	}
-	return currentUser.Username == "root" || currentUser.Uid == "0"
 }
 
 // Writes device list to a text file in user's home directory
@@ -416,25 +404,6 @@ func parseARPTable(foundIPs []string, resolveHosts bool) []Device {
 	}
 
 	return devices
-}
-
-// Sets system resource limits for better performance
-func setResourceLimits() {
-	var rLimit syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		log.Printf("Warning: Could not get resource limit: %v", err)
-		return
-	}
-
-	// Set to a high but reasonable limit
-	rLimit.Cur = 8192
-	if rLimit.Max < rLimit.Cur {
-		rLimit.Cur = rLimit.Max
-	}
-
-	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		log.Printf("Warning: Could not set resource limit: %v", err)
-	}
 }
 
 // Gets the number of CPU cores

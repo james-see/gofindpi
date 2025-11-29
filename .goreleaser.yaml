@@ -116,3 +116,4 @@ brews:
       bin.install "gofindpi"
     test: |
       system "#{bin}/gofindpi", "--version"
+    skip_upload: auto
